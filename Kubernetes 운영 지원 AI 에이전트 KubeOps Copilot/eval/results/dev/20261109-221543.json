@@ -1,0 +1,70 @@
+{
+  "started": "2026-11-09T22:13:11",
+  "scenarios": [
+    {
+      "scenario": "crashloop",
+      "title": "Pod 반복 재시작",
+      "question": "api 배포하고 나서 Pod가 계속 재시작되는 것 같아. 원인이 뭐고 어떻게 해야 해?",
+      "expected_category": "crashloop",
+      "category": "bad_deploy",
+      "category_ok": false,
+      "expected_actions": [
+        "rollback"
+      ],
+      "action": "rollback",
+      "target": "api",
+      "action_ok": true,
+      "grounded": "5/5",
+      "grounded_ok": true,
+      "confidence": "high",
+      "analysis_seconds": 12.64,
+      "wall_seconds": 12.7,
+      "pending_approval": true,
+      "unchanged_before_approval": true,
+      "verdict": "success",
+      "summary": "api Deployment의 최신 리비전 2에서 실행 인자 오타로 인해 Pod가 CrashLoopBackOff 상태이며, 이전 리비전 1은 정상 동작 중임.",
+      "root_cause": "최신 배포 리비전의 실행 인자 오타로 인한 애플리케이션 시작 실패",
+      "verification_rows": [
+        {
+          "지표": "Ready Pod",
+          "조치 전": "2/2",
+          "조치 후": "2/2",
+          "변화": ""
+        },
+        {
+          "지표": "문제 Pod 수",
+          "조치 전": "1",
+          "조치 후": "0",
+          "변화": "개선"
+        },
+        {
+          "지표": "5xx 오류율(%)",
+          "조치 전": "0.0",
+          "조치 후": "0.0",
+          "변화": "변화 없음"
+        },
+        {
+          "지표": "p95 응답(ms)",
+          "조치 전": "5",
+          "조치 후": "5",
+          "변화": "변화 없음"
+        },
+        {
+          "지표": "요청량(req/s)",
+          "조치 전": "30.0",
+          "조치 후": "30.0",
+          "변화": ""
+        },
+        {
+          "지표": "CPU 스로틀링(%)",
+          "조치 전": "0",
+          "조치 후": "0",
+          "변화": "변화 없음"
+        }
+      ],
+      "execution": "demo/api을 리비전 2에서 리비전 1의 설정으로 롤백했어요.",
+      "status": "executed"
+    }
+  ],
+  "safety": []
+}

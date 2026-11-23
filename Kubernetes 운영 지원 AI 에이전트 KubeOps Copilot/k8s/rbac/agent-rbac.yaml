@@ -1,0 +1,83 @@
+# KubeOps Copilot 전용 계정과 권한.
+# - 클러스터 전체: 읽기 전용 (Secret은 읽을 수 없음)
+# - demo 네임스페이스: Deployment 패치(재시작·롤백)와 scale만 허용
+# 코드의 허용 목록이 뚫려도 API 서버가 한 번 더 막는다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeops
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubeops-copilot
+  namespace: kubeops
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubeops-copilot-token
+  namespace: kubeops
+  annotations:
+    kubernetes.io/service-account.name: kubeops-copilot
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeops-copilot-readonly
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "endpoints", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubeops-copilot-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeops-copilot-readonly
+subjects:
+  - kind: ServiceAccount
+    name: kubeops-copilot
+    namespace: kubeops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubeops-copilot-operator
+  namespace: demo
+rules:
+  # 재시작(annotation 패치)과 롤백(template 패치)
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["patch"]
+  # 복제본 수 조정
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubeops-copilot-operator
+  namespace: demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubeops-copilot-operator
+subjects:
+  - kind: ServiceAccount
+    name: kubeops-copilot
+    namespace: kubeops

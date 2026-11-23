@@ -1,0 +1,68 @@
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "deploy"'
+      when: never
+    - when: always
+
+stages:
+  - test
+  - promote
+
+unit-tests:
+  stage: test
+  image: python:3.11-slim
+  variables:
+    UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - .cache/uv/
+  script:
+    - python -m pip install uv==0.9.26
+    - uv sync --locked --python 3.11
+    - uv run --no-sync python -m unittest discover -s tests -v
+
+promote-deploy:
+  stage: promote
+  image: alpine:3.22
+  needs: [unit-tests]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  resource_group: deploy
+  environment:
+    name: deploy-gate
+    action: prepare
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - apk add --no-cache git openssh-client
+  script:
+    - |
+      set -eu
+      : "${GITLAB_PROMOTE_SSH_KEY_B64:?Set the protected deploy-gate CI variable}"
+      umask 077
+      ssh_dir=$(mktemp -d)
+      trap 'rm -rf -- "$ssh_dir"' EXIT
+      printf '%s' "$GITLAB_PROMOTE_SSH_KEY_B64" | base64 -d > "$ssh_dir/id_ed25519"
+      unset GITLAB_PROMOTE_SSH_KEY_B64
+      # GitLab.com's published ED25519 host key.
+      printf '%s\n' 'gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf' > "$ssh_dir/known_hosts"
+      export GIT_SSH_COMMAND="ssh -F /dev/null -i $ssh_dir/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$ssh_dir/known_hosts"
+      remote='git@gitlab.com:example-group/kubeops-copilot.git'
+      candidate=$(git rev-parse HEAD)
+      git fetch --no-tags "$remote" refs/heads/main
+      git merge-base --is-ancestor "$candidate" FETCH_HEAD
+      deploy_ref=$(git ls-remote "$remote" refs/heads/deploy)
+      if [ -n "$deploy_ref" ]; then
+        git fetch --no-tags "$remote" refs/heads/deploy
+        if git merge-base --is-ancestor "$candidate" FETCH_HEAD; then
+          printf 'Deploy already includes %s\n' "$candidate"
+          exit 0
+        fi
+      fi
+      git push -o ci.skip "$remote" "$candidate:refs/heads/deploy"
+      actual=$(git ls-remote --exit-code "$remote" refs/heads/deploy | cut -f1)
+      test "$actual" = "$candidate"
+      printf 'Promoted tested commit %s to deploy\n' "$actual"

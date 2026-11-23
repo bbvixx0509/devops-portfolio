@@ -1,0 +1,16 @@
+# OS
+.DS_Store
+
+# 의존성·빌드 결과
+node_modules/
+.venv/
+__pycache__/
+dist/
+
+# 실행 중 생기는 파일
+*.log
+.env
+.env.*.local
+.kube/
+*.tfstate
+*.tfstate.*

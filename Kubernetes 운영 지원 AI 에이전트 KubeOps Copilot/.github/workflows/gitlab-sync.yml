@@ -1,0 +1,51 @@
+name: Sync GitHub main to GitLab
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitlab-main-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the current main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: refs/heads/main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Push main and verify the GitLab commit
+        shell: bash
+        env:
+          GITLAB_SYNC_SSH_KEY: ${{ secrets.GITLAB_SYNC_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          : "${GITLAB_SYNC_SSH_KEY:?Set the GITLAB_SYNC_SSH_KEY repository secret}"
+          umask 077
+          ssh_dir=$(mktemp -d "$RUNNER_TEMP/gitlab-sync.XXXXXX")
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          printf '%s\n' "$GITLAB_SYNC_SSH_KEY" > "$ssh_dir/id_ed25519"
+          unset GITLAB_SYNC_SSH_KEY
+
+          # GitLab.com's published ED25519 host key.
+          printf '%s\n' 'gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf' > "$ssh_dir/known_hosts"
+          printf -v GIT_SSH_COMMAND 'ssh -F /dev/null -i %q -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=%q' "$ssh_dir/id_ed25519" "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND
+
+          remote='git@gitlab.com:example-group/kubeops-copilot.git'
+          git push --porcelain "$remote" HEAD:refs/heads/main
+          expected=$(git rev-parse HEAD)
+          actual=$(git ls-remote --exit-code "$remote" refs/heads/main | cut -f1)
+          test "$actual" = "$expected"
+          printf 'Verified GitLab main at %s\n' "$actual"
